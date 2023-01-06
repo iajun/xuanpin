@@ -1,23 +1,41 @@
 const increaseList = require('./files/increase_list.json')
 const shopList = require('./files/shop_list.json')
-const axios = require('axios');
 const { exec } = require('child_process');
 const { promisify } = require('util');
+const Utils = require("./utils")
 
-const REGEX = /Shopify.theme = (.*?)/;
+const REGEX = /Shopify\.theme = (.*);/;
 
-async function getTheme(domain) {
-  const url = `https://${domain}`;
-  const {stdout: html} = await promisify(exec)(`curl ${url}`)
-  const {input,...rest,} = REGEX.exec(html)
-  // console.log(b)
-  console.log(rest)
+async function main() {
+  const set = new Set()
+  const themeList = []
 
-  // axios.get(`https://${url}`, { responseType: 'document' }).then(res => {
-  //   console.log(res.data)
-  // }).catch(er => {
-  //   console.error(er)
-  // })
+  async function getTheme(domain) {
+    if (set.has(domain)) return;
+    const url = `https://${domain}`;
+    try {
+      const { stdout: html } = await promisify(exec)(`curl ${url}`, {
+        maxBuffer: 1024 * 1024 * 1024
+      })
+      set.add(domain)
+      const [, themeStr] = REGEX.exec(html)
+      const theme = JSON.parse(themeStr)
+      themeList.push({
+        name: theme.name,
+        domain,
+        id: theme.id
+      })
+      console.log(themeList.length, theme.name)
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  const promises = increaseList.concat(shopList).map(t => getTheme(t.shop_domain))
+
+  await Promise.all(promises)
+
+  Utils.toCsv('theme', themeList)
 }
 
-getTheme(increaseList[0].shop_domain)
+main()
